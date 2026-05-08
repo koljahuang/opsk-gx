@@ -1,0 +1,40 @@
+# Ops Frontend - Multi-stage build (Nuxt SSR)
+
+# Stage 1: Build Nuxt
+FROM public.ecr.aws/docker/library/node:24-alpine AS builder
+
+ARG CN_MIRROR=0
+RUN if [ "$CN_MIRROR" = "1" ]; then npm config set registry https://registry.npmmirror.com; fi
+
+WORKDIR /app
+COPY frontend/package*.json ./
+RUN npm ci --force
+
+COPY frontend/ .
+
+# Set backend URL for Nuxt build — routeRules proxy target is compiled at build time.
+# In EKS, the backend is reachable at http://opsk-backend:3080 via K8s service DNS.
+ARG NUXT_BACKEND_URL=http://backend:3080
+ENV NUXT_BACKEND_URL=${NUXT_BACKEND_URL}
+
+ENV NODE_OPTIONS="--max-old-space-size=4096"
+RUN npm run build
+
+# Stage 2: Serve with Nitro (SSR)
+FROM public.ecr.aws/docker/library/node:24-alpine
+
+RUN addgroup -S ops && adduser -S -G ops -s /sbin/nologin ops
+
+WORKDIR /app
+COPY --from=builder --chown=ops:ops /app/.output .output
+
+USER ops
+
+EXPOSE 3000
+ENV NITRO_PORT=3000
+ENV NITRO_HOST=0.0.0.0
+
+HEALTHCHECK --interval=15s --timeout=3s --start-period=8s --retries=3 \
+    CMD wget -qO- http://localhost:3000/ || exit 1
+
+CMD ["node", ".output/server/index.mjs"]

@@ -1,0 +1,6 @@
+serviceAccount:
+  name: karpenter
+settings:
+  clusterName: opsk-eks-us-west-1-kolya
+  clusterEndpoint: https://EED368042CD9611577970BC44F3BCFB9.gr7.us-west-1.eks.amazonaws.com
+  interruptionQueue: opsk-kolya-karpenter

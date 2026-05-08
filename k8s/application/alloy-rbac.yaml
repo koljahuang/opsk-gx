@@ -1,0 +1,29 @@
+# RBAC for opsk-backend to manage Alloy ConfigMap and DaemonSet
+# in the monitoring namespace (cross-namespace access requires ClusterRole)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: opsk-alloy-manager
+rules:
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "patch"]
+  - apiGroups: ["apps"]
+    resources: ["daemonsets"]
+    verbs: ["get", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: opsk-alloy-manager
+subjects:
+  - kind: ServiceAccount
+    name: backend
+    namespace: opsk
+  - kind: Group
+    name: opsk-backend
+    apiGroup: rbac.authorization.k8s.io
+roleRef:
+  kind: ClusterRole
+  name: opsk-alloy-manager
+  apiGroup: rbac.authorization.k8s.io

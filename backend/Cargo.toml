@@ -1,0 +1,76 @@
+[package]
+name = "opsk"
+version = "0.1.0"
+edition = "2024"
+description = "Ops - AI-powered multi-cloud infrastructure operations platform"
+
+[dependencies]
+# Web framework
+axum = { version = "0.8", features = ["macros"] }
+axum-extra = { version = "0.10", features = ["cookie", "typed-header"] }
+tokio = { version = "1", features = ["full"] }
+tower = "0.5"
+tower-http = { version = "0.6", features = ["cors", "trace", "compression-gzip", "limit", "set-header"] }
+http = "1"
+
+# Database
+sqlx = { version = "0.8", features = ["runtime-tokio", "postgres", "migrate", "json", "chrono", "uuid"] }
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Auth
+jsonwebtoken = "9"
+bcrypt = "0.16"
+sha2 = "0.10"
+hmac = "0.12"
+rand = "0.9"
+hex = "0.4"
+
+# Utilities
+uuid = { version = "1", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+dotenvy = "0.15"
+thiserror = "2"
+anyhow = "1"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+
+# Streaming
+tokio-stream = { version = "0.1", features = ["sync"] }
+futures = "0.3"
+async-stream = "0.3"
+
+# Encoding
+base64 = "0.22"
+urlencoding = "2"
+
+# AWS
+aws-config = { version = "1", features = ["behavior-version-latest"] }
+aws-sdk-secretsmanager = "1"
+aws-sdk-cloudwatch = "1"
+aws-sdk-cognitoidentityprovider = "1"
+
+# Kubernetes
+kube = { version = "0.98", features = ["client", "runtime", "derive", "rustls-tls", "aws-lc-rs"] }
+k8s-openapi = { version = "0.24", features = ["v1_32"] }
+secrecy = "0.10"
+
+# HTTP client (for Mimir/Loki/Tempo API calls)
+reqwest = { version = "0.12", features = ["json"] }
+
+# Regex (for traceback parsing in RCA)
+regex = "1"
+
+# Cron scheduling
+croner = "2"
+
+# In-memory caching
+moka = { version = "0.12", features = ["future", "sync"] }
+
+[dev-dependencies]
+sqlx = { version = "0.8", features = ["runtime-tokio", "postgres", "migrate"] }
+tokio = { version = "1", features = ["full", "test-util"] }

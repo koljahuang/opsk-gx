@@ -1,0 +1,25 @@
+# RBAC for opsk-backend to manage Argo Rollouts across all namespaces
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: opsk-rollout-manager
+rules:
+  - apiGroups: ["argoproj.io"]
+    resources: ["rollouts", "rollouts/status", "analysisruns", "analysistemplates"]
+    verbs: ["get", "list", "watch", "patch", "update"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: opsk-rollout-manager
+subjects:
+  - kind: ServiceAccount
+    name: backend
+    namespace: opsk
+  - kind: Group
+    name: opsk-backend
+    apiGroup: rbac.authorization.k8s.io
+roleRef:
+  kind: ClusterRole
+  name: opsk-rollout-manager
+  apiGroup: rbac.authorization.k8s.io

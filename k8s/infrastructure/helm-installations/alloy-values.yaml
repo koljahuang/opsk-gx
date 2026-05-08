@@ -1,0 +1,60 @@
+# Grafana Alloy — metrics/logs/traces collector (DaemonSet)
+# Internal service only — no Ingress/ALB
+# Scrapes node/container/app metrics → Mimir, collects logs → Loki, forwards traces → Tempo
+
+# Alloy config content is managed dynamically by the opsk backend.
+# On startup and when telemetry settings change, the backend patches
+# the ConfigMap via k8s API with endpoints from the Telemetry page.
+# See: backend/src/services/alloy.rs
+alloy:
+  configMap:
+    content: |
+      // Placeholder — replaced by opsk backend on startup.
+      // Configure a telemetry provider in the Ops UI to enable collection.
+      discovery.kubernetes "pods" {
+        role = "pod"
+      }
+
+  extraPorts:
+    - name: otlp-grpc
+      port: 4317
+      targetPort: 4317
+      protocol: TCP
+    - name: otlp-http
+      port: 4318
+      targetPort: 4318
+      protocol: TCP
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+controller:
+  type: daemonset
+  nodeSelector:
+    karpenter.sh/nodepool: common-nodepool
+
+# RBAC for scraping kubelet/cadvisor via API server proxy
+alloy-controller:
+  serviceAccount:
+    create: true
+
+# Add nodes/proxy for kubelet & cadvisor scraping via API server
+rbac:
+  create: true
+  clusterRules:
+    - apiGroups: [""]
+      resources: ["nodes"]
+      verbs: ["get", "list", "watch"]
+    - apiGroups: [""]
+      resources: ["nodes/pods"]
+      verbs: ["get", "list", "watch"]
+    - apiGroups: [""]
+      resources: ["nodes/metrics", "nodes/proxy"]
+      verbs: ["get", "list", "watch"]
+    - nonResourceURLs: ["/metrics"]
+      verbs: ["get"]

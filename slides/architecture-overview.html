@@ -1,0 +1,1638 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ops K — Architecture Overview</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&family=Outfit:wght@200;300;400;600;700;800;900&display=swap');
+
+  :root {
+    --bg-deepest: #08090c;
+    --bg-deep: #0d0f14;
+    --bg-card: #12151c;
+    --bg-surface: #181c26;
+    --bg-hover: #1e2330;
+    --orange: #ff6600;
+    --orange-glow: rgba(255, 102, 0, 0.3);
+    --orange-dim: #cc5200;
+    --cyan: #00d4ff;
+    --cyan-glow: rgba(0, 212, 255, 0.2);
+    --green: #00e676;
+    --green-glow: rgba(0, 230, 118, 0.15);
+    --amber: #ffab00;
+    --red: #ff5252;
+    --purple: #b388ff;
+    --text-primary: #e8eaf0;
+    --text-secondary: #8892a4;
+    --text-dim: #5a6378;
+    --border: rgba(255, 255, 255, 0.06);
+    --border-accent: rgba(255, 102, 0, 0.2);
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html { scroll-behavior: smooth; scroll-snap-type: y mandatory; overflow-y: scroll; overflow-x: hidden; }
+
+  body {
+    font-family: 'Outfit', sans-serif;
+    background: var(--bg-deepest);
+    color: var(--text-primary);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* ── Slide Container ── */
+  .slide {
+    width: 100vw;
+    min-height: 100vh;
+    scroll-snap-align: start;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    padding: 60px 80px;
+    overflow: hidden;
+  }
+
+  /* ── Animated Grid Background ── */
+  .grid-bg {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    background-image:
+      linear-gradient(rgba(255,102,0,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,102,0,0.03) 1px, transparent 1px);
+    background-size: 60px 60px;
+    mask-image: radial-gradient(ellipse 80% 60% at 50% 50%, black 30%, transparent 100%);
+  }
+
+  .noise-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    opacity: 0.015;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+    pointer-events: none;
+  }
+
+  .slide > * { position: relative; z-index: 1; }
+
+  /* ── Typography ── */
+  .slide-number {
+    position: absolute;
+    top: 32px;
+    right: 48px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    color: var(--text-dim);
+    letter-spacing: 2px;
+  }
+
+  .section-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 4px;
+    text-transform: uppercase;
+    color: var(--orange);
+    margin-bottom: 16px;
+    opacity: 0.8;
+  }
+
+  h1 {
+    font-size: clamp(48px, 6vw, 88px);
+    font-weight: 800;
+    line-height: 1.05;
+    letter-spacing: -2px;
+  }
+
+  h2 {
+    font-size: clamp(36px, 4vw, 56px);
+    font-weight: 700;
+    line-height: 1.15;
+    letter-spacing: -1px;
+  }
+
+  h3 {
+    font-size: 22px;
+    font-weight: 600;
+    margin-bottom: 12px;
+  }
+
+  .subtitle {
+    font-size: 20px;
+    font-weight: 300;
+    color: var(--text-secondary);
+    max-width: 600px;
+    line-height: 1.6;
+    margin-top: 20px;
+  }
+
+  .mono { font-family: 'JetBrains Mono', monospace; }
+
+  .accent { color: var(--orange); }
+  .cyan { color: var(--cyan); }
+  .green { color: var(--green); }
+  .amber { color: var(--amber); }
+  .purple { color: var(--purple); }
+
+  /* ── Slide 1: Hero ── */
+  .hero-glow {
+    position: absolute;
+    width: 600px;
+    height: 600px;
+    border-radius: 50%;
+    filter: blur(120px);
+    opacity: 0.12;
+    animation: float 8s ease-in-out infinite;
+  }
+  .hero-glow.g1 { background: var(--orange); top: -100px; right: -100px; }
+  .hero-glow.g2 { background: var(--cyan); bottom: -150px; left: -100px; animation-delay: -4s; }
+
+  @keyframes float {
+    0%, 100% { transform: translate(0, 0) scale(1); }
+    50% { transform: translate(20px, -30px) scale(1.1); }
+  }
+
+  .hero-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 16px;
+    border-radius: 20px;
+    background: rgba(255, 102, 0, 0.08);
+    border: 1px solid rgba(255, 102, 0, 0.2);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    color: var(--orange);
+    margin-bottom: 32px;
+    letter-spacing: 1px;
+  }
+  .hero-badge .dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--orange);
+    animation: pulse-dot 2s ease-in-out infinite;
+  }
+  @keyframes pulse-dot {
+    0%, 100% { opacity: 1; box-shadow: 0 0 0 0 var(--orange-glow); }
+    50% { opacity: 0.6; box-shadow: 0 0 0 6px transparent; }
+  }
+
+  .hero-title span {
+    display: block;
+  }
+  .hero-title .line2 {
+    background: linear-gradient(135deg, var(--orange), #ff9944);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .hero-stats {
+    display: flex;
+    gap: 48px;
+    margin-top: 56px;
+    padding-top: 32px;
+    border-top: 1px solid var(--border);
+  }
+  .hero-stat {
+    text-align: left;
+  }
+  .hero-stat-value {
+    font-size: 32px;
+    font-weight: 700;
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .hero-stat-label {
+    font-size: 13px;
+    color: var(--text-dim);
+    margin-top: 4px;
+  }
+
+  /* ── Slide 2: Platform ── */
+  .platform-diagram {
+    width: 100%;
+    max-width: 1100px;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    margin-top: 40px;
+  }
+
+  .platform-layer {
+    position: relative;
+    padding: 24px 32px;
+    border: 1px solid var(--border);
+    border-bottom: none;
+    background: var(--bg-card);
+    display: flex;
+    align-items: center;
+    gap: 24px;
+    transition: all 0.3s ease;
+  }
+  .platform-layer:first-child { border-radius: 12px 12px 0 0; }
+  .platform-layer:last-child { border-radius: 0 0 12px 12px; border-bottom: 1px solid var(--border); }
+  .platform-layer:hover {
+    background: var(--bg-hover);
+    border-color: var(--border-accent);
+  }
+  .platform-layer:hover + .platform-layer { border-top-color: var(--border-accent); }
+
+  .layer-icon {
+    width: 48px;
+    height: 48px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 22px;
+    flex-shrink: 0;
+  }
+
+  .layer-content { flex: 1; }
+  .layer-name {
+    font-weight: 600;
+    font-size: 16px;
+    margin-bottom: 4px;
+  }
+  .layer-desc {
+    font-size: 13px;
+    color: var(--text-secondary);
+  }
+
+  .layer-tags {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+  .layer-tag {
+    padding: 4px 10px;
+    border-radius: 6px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    white-space: nowrap;
+  }
+
+  .tag-orange { background: rgba(255, 102, 0, 0.1); color: var(--orange); border: 1px solid rgba(255, 102, 0, 0.15); }
+  .tag-cyan { background: rgba(0, 212, 255, 0.08); color: var(--cyan); border: 1px solid rgba(0, 212, 255, 0.12); }
+  .tag-green { background: rgba(0, 230, 118, 0.08); color: var(--green); border: 1px solid rgba(0, 230, 118, 0.12); }
+  .tag-amber { background: rgba(255, 171, 0, 0.08); color: var(--amber); border: 1px solid rgba(255, 171, 0, 0.12); }
+  .tag-purple { background: rgba(179, 136, 255, 0.08); color: var(--purple); border: 1px solid rgba(179, 136, 255, 0.12); }
+  .tag-red { background: rgba(255, 82, 82, 0.08); color: var(--red); border: 1px solid rgba(255, 82, 82, 0.12); }
+
+  .layer-arrow {
+    text-align: center;
+    color: var(--text-dim);
+    font-size: 18px;
+    padding: 2px 0;
+  }
+
+  /* ── Slide 3: AWS Infrastructure ── */
+  .infra-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+    width: 100%;
+    max-width: 1100px;
+    margin-top: 24px;
+  }
+
+  .infra-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px 18px;
+    transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+    position: relative;
+    overflow: hidden;
+  }
+  .infra-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, var(--orange), transparent);
+    opacity: 0;
+    transition: opacity 0.3s;
+  }
+  .infra-card:hover {
+    border-color: var(--border-accent);
+    transform: translateY(-2px);
+    box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+  }
+  .infra-card:hover::before { opacity: 1; }
+
+  .infra-card-icon {
+    font-size: 22px;
+    margin-bottom: 8px;
+  }
+
+  .infra-card h3 {
+    font-size: 14px;
+    margin-bottom: 4px;
+  }
+
+  .infra-card p {
+    font-size: 12px;
+    color: var(--text-secondary);
+    line-height: 1.4;
+  }
+
+  .infra-card .detail {
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid var(--border);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--text-dim);
+  }
+
+  .infra-card.wide { grid-column: span 2; }
+  .infra-card.tall { grid-row: span 2; }
+
+  .slide-compact { padding-top: 36px; padding-bottom: 36px; }
+
+  /* ── Slide 4: K8s Components ── */
+  .k8s-layout {
+    width: 100%;
+    max-width: 1100px;
+    margin-top: 40px;
+  }
+
+  .k8s-category {
+    margin-bottom: 24px;
+  }
+  .k8s-category-title {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    margin-bottom: 12px;
+    padding-left: 4px;
+  }
+
+  .k8s-row {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+
+  .k8s-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 16px;
+    border-radius: 8px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    font-size: 13px;
+    font-weight: 500;
+    transition: all 0.25s ease;
+    cursor: default;
+  }
+  .k8s-chip:hover {
+    border-color: var(--border-accent);
+    background: var(--bg-hover);
+    transform: translateY(-1px);
+  }
+  .k8s-chip .chip-icon {
+    font-size: 16px;
+  }
+  .k8s-chip .chip-ver {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--text-dim);
+  }
+
+  /* ── Slide 5: Features ── */
+  .features-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 20px;
+    width: 100%;
+    max-width: 1100px;
+    margin-top: 40px;
+  }
+
+  .feature-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 28px;
+    position: relative;
+    overflow: hidden;
+    transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  .feature-card:hover {
+    border-color: var(--border-accent);
+    transform: translateY(-2px);
+    box-shadow: 0 12px 40px rgba(0,0,0,0.3);
+  }
+
+  .feature-card .feature-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 20px;
+    margin-bottom: 16px;
+  }
+
+  .feature-card h3 {
+    font-size: 18px;
+    margin-bottom: 8px;
+  }
+  .feature-card p {
+    font-size: 13px;
+    color: var(--text-secondary);
+    line-height: 1.6;
+  }
+  .feature-card .feature-bullets {
+    list-style: none;
+    margin-top: 12px;
+  }
+  .feature-card .feature-bullets li {
+    font-size: 12px;
+    color: var(--text-secondary);
+    padding: 4px 0;
+    padding-left: 16px;
+    position: relative;
+  }
+  .feature-card .feature-bullets li::before {
+    content: '>';
+    position: absolute;
+    left: 0;
+    font-family: 'JetBrains Mono', monospace;
+    color: var(--orange);
+    font-size: 11px;
+  }
+
+  .feature-card.highlight {
+    background: linear-gradient(135deg, rgba(255, 102, 0, 0.06), rgba(255, 102, 0, 0.02));
+    border-color: rgba(255, 102, 0, 0.15);
+  }
+
+  /* ── Slide 6: Data Flow ── */
+  .flow-container {
+    width: 100%;
+    max-width: 1100px;
+    margin-top: 40px;
+  }
+
+  .flow-row {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    margin-bottom: 16px;
+  }
+
+  .flow-node {
+    padding: 14px 20px;
+    border-radius: 10px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    font-size: 13px;
+    font-weight: 500;
+    text-align: center;
+    min-width: 120px;
+    transition: all 0.3s ease;
+    flex-shrink: 0;
+  }
+  .flow-node:hover {
+    border-color: var(--border-accent);
+    transform: scale(1.03);
+  }
+  .flow-node .node-sub {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--text-dim);
+    margin-top: 4px;
+  }
+
+  .flow-arrow {
+    flex: 1;
+    min-width: 30px;
+    height: 1px;
+    background: linear-gradient(90deg, var(--border), var(--orange-dim), var(--border));
+    position: relative;
+  }
+  .flow-arrow::after {
+    content: '';
+    position: absolute;
+    right: 0;
+    top: -3px;
+    border: solid var(--orange-dim);
+    border-width: 0 1px 1px 0;
+    padding: 3px;
+    transform: rotate(-45deg);
+  }
+  .flow-arrow-label {
+    position: absolute;
+    top: -18px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    color: var(--text-dim);
+    white-space: nowrap;
+    letter-spacing: 1px;
+  }
+
+  .flow-section-title {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    margin-bottom: 14px;
+    margin-top: 8px;
+  }
+
+  /* ── Slide 7: Observability ── */
+  .obs-table {
+    width: 100%;
+    max-width: 900px;
+    margin-top: 40px;
+    border-collapse: separate;
+    border-spacing: 0;
+    border-radius: 12px;
+    overflow: hidden;
+    border: 1px solid var(--border);
+  }
+  .obs-table th {
+    background: var(--bg-surface);
+    padding: 14px 20px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+  }
+  .obs-table td {
+    padding: 14px 20px;
+    font-size: 14px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg-card);
+    transition: background 0.2s;
+  }
+  .obs-table tr:last-child td { border-bottom: none; }
+  .obs-table tr:hover td { background: var(--bg-hover); }
+  .obs-table .runtime-label {
+    font-weight: 600;
+    font-size: 13px;
+  }
+  .obs-table .tool-badge {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 5px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    font-weight: 500;
+  }
+
+  /* ── Slide: Architecture & Advantages ── */
+  .final-layout {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    width: 100%;
+    max-width: 1200px;
+    margin-top: 16px;
+  }
+
+  .mermaid-wrap {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 16px 20px;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    max-height: 45vh;
+  }
+  .mermaid-wrap .mermaid {
+    width: 100%;
+    overflow: hidden;
+  }
+  .mermaid-wrap .mermaid svg {
+    width: 100% !important;
+    max-height: 42vh;
+  }
+
+  .adv-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+  }
+
+  .adv-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px 16px;
+    transition: all 0.3s ease;
+  }
+  .adv-card:hover {
+    border-color: var(--border-accent);
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(255, 102, 0, 0.06);
+  }
+
+  .adv-card-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 6px;
+  }
+
+  .adv-icon {
+    width: 28px;
+    height: 28px;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    flex-shrink: 0;
+  }
+
+  .adv-card h4 {
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.2px;
+  }
+  .adv-card p {
+    font-size: 10px;
+    color: var(--text-secondary);
+    line-height: 1.45;
+    margin: 0;
+  }
+  .adv-card .adv-tags {
+    display: flex;
+    gap: 4px;
+    margin-top: 6px;
+    flex-wrap: wrap;
+  }
+  .adv-card .adv-tag {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    padding: 2px 6px;
+    border-radius: 4px;
+    background: rgba(255,255,255,0.04);
+    color: var(--text-dim);
+    border: 1px solid var(--border);
+  }
+
+  .mermaid-wrap {
+    cursor: zoom-in;
+    position: relative;
+  }
+  .mermaid-wrap::after {
+    content: 'Click to zoom';
+    position: absolute;
+    bottom: 8px;
+    right: 12px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--text-dim);
+    opacity: 0;
+    transition: opacity 0.2s;
+    pointer-events: none;
+  }
+  .mermaid-wrap:hover::after { opacity: 1; }
+
+  /* Fullscreen overlay */
+  .diagram-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    background: rgba(8, 9, 12, 0.92);
+    backdrop-filter: blur(12px);
+    display: none;
+    justify-content: center;
+    align-items: center;
+    cursor: zoom-out;
+    padding: 40px;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+  }
+  .diagram-overlay.open {
+    display: flex;
+    opacity: 1;
+  }
+  .diagram-overlay .overlay-inner {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 32px;
+    width: 95vw;
+    height: 90vh;
+    overflow: auto;
+    transform: scale(0.95);
+    transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .diagram-overlay.open .overlay-inner {
+    transform: scale(1);
+  }
+  .diagram-overlay .overlay-inner svg {
+    width: auto;
+    height: auto;
+    min-width: 1200px;
+  }
+  .overlay-close {
+    position: fixed;
+    top: 20px;
+    right: 28px;
+    z-index: 1001;
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text-secondary);
+    font-size: 13px;
+    padding: 6px 14px;
+    cursor: pointer;
+    font-family: 'JetBrains Mono', monospace;
+    transition: all 0.2s;
+    display: none;
+  }
+  .diagram-overlay.open ~ .overlay-close { display: block; }
+  .overlay-close:hover {
+    border-color: var(--orange);
+    color: var(--text-primary);
+  }
+
+  @media (max-width: 900px) {
+    .adv-grid { grid-template-columns: 1fr; }
+  }
+
+  /* ── Navigation ── */
+  .nav-dots {
+    position: fixed;
+    right: 24px;
+    top: 50%;
+    transform: translateY(-50%);
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    z-index: 100;
+  }
+  .nav-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--text-dim);
+    border: none;
+    cursor: pointer;
+    transition: all 0.3s;
+    padding: 0;
+  }
+  .nav-dot:hover, .nav-dot.active {
+    background: var(--orange);
+    box-shadow: 0 0 8px var(--orange-glow);
+    transform: scale(1.3);
+  }
+
+  .page-progress {
+    position: fixed;
+    top: 0;
+    left: 0;
+    height: 2px;
+    background: linear-gradient(90deg, var(--orange), #ff9944);
+    z-index: 200;
+    transition: width 0.15s;
+    box-shadow: 0 0 12px var(--orange-glow);
+  }
+
+  /* ── Animation ── */
+  .reveal {
+    opacity: 0;
+    transform: translateY(24px);
+    transition: all 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .reveal.visible {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  .reveal.d1 { transition-delay: 0.1s; }
+  .reveal.d2 { transition-delay: 0.2s; }
+  .reveal.d3 { transition-delay: 0.3s; }
+  .reveal.d4 { transition-delay: 0.4s; }
+  .reveal.d5 { transition-delay: 0.5s; }
+  .reveal.d6 { transition-delay: 0.6s; }
+  .reveal.d7 { transition-delay: 0.7s; }
+  .reveal.d8 { transition-delay: 0.8s; }
+  .reveal.d9 { transition-delay: 0.9s; }
+
+  /* ── Responsive ── */
+  @media (max-width: 900px) {
+    .slide { padding: 40px 24px; }
+    .infra-grid { grid-template-columns: 1fr; }
+    .infra-card.wide { grid-column: span 1; }
+    .features-grid { grid-template-columns: 1fr; }
+    .summary-cols { grid-template-columns: 1fr; }
+    .hero-stats { flex-wrap: wrap; gap: 24px; }
+    .flow-row { flex-wrap: wrap; gap: 8px; }
+    .flow-arrow { display: none; }
+    .nav-dots { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<div class="grid-bg"></div>
+<div class="noise-overlay"></div>
+<div class="page-progress" id="progress"></div>
+
+<!-- Navigation Dots -->
+<nav class="nav-dots" id="nav">
+  <button class="nav-dot active" data-slide="0" title="Overview"></button>
+  <button class="nav-dot" data-slide="1" title="Platform Stack"></button>
+  <button class="nav-dot" data-slide="2" title="AWS Infrastructure"></button>
+  <button class="nav-dot" data-slide="3" title="Features: AI & Ops"></button>
+  <button class="nav-dot" data-slide="4" title="Features: Security & Platform"></button>
+  <button class="nav-dot" data-slide="5" title="Data Flow"></button>
+  <button class="nav-dot" data-slide="6" title="Architecture"></button>
+  <button class="nav-dot" data-slide="7" title="Advantages"></button>
+</nav>
+
+<!-- ═══════════════════════════════════════════════════════
+     SLIDE 1: HERO
+     ═══════════════════════════════════════════════════════ -->
+<section class="slide" id="slide-0">
+  <div class="hero-glow g1"></div>
+  <div class="hero-glow g2"></div>
+  <span class="slide-number mono">01 / 08</span>
+
+  <div style="max-width: 800px;">
+    <div class="hero-badge reveal">
+      <span class="dot"></span>
+      ARCHITECTURE OVERVIEW
+    </div>
+
+    <h1 class="hero-title">
+      <span class="reveal d1">Ops K</span>
+      <span class="line2 reveal d2">AI-Powered Auto-SRE</span>
+    </h1>
+
+    <p class="subtitle reveal d3">
+      以 Claude AI Agent 为核心的多云基础设施运维平台。<br>
+      实时接入集群、指标、日志与部署流水线，将 SRE 工作流从散落的工具整合为统一智能操作面。
+    </p>
+
+    <div class="hero-stats">
+      <div class="hero-stat reveal d4">
+        <div class="hero-stat-value accent">AWS</div>
+        <div class="hero-stat-label">Cloud Platform</div>
+      </div>
+      <div class="hero-stat reveal d5">
+        <div class="hero-stat-value cyan">EKS</div>
+        <div class="hero-stat-label">Compute Runtime</div>
+      </div>
+      <div class="hero-stat reveal d6">
+        <div class="hero-stat-value green">Rust</div>
+        <div class="hero-stat-label">Backend Engine</div>
+      </div>
+      <div class="hero-stat reveal d7">
+        <div class="hero-stat-value amber">Nuxt 3</div>
+        <div class="hero-stat-label">Frontend SSR</div>
+      </div>
+      <div class="hero-stat reveal d8">
+        <div class="hero-stat-value purple">Claude</div>
+        <div class="hero-stat-label">AI Agent Core</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════
+     SLIDE 2: PLATFORM STACK
+     ═══════════════════════════════════════════════════════ -->
+<section class="slide" id="slide-1">
+  <span class="slide-number mono">02 / 08</span>
+  <div class="section-label reveal">PLATFORM STACK</div>
+  <h2 class="reveal d1">落地平台 <span class="accent">&</span> 技术栈</h2>
+  <p class="subtitle reveal d2" style="text-align: center;">从用户请求到基础设施，每一层的技术选型</p>
+
+  <div class="platform-diagram">
+    <div class="platform-layer reveal d3">
+      <div class="layer-icon" style="background: rgba(179,136,255,0.1); color: var(--purple);">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+      </div>
+      <div class="layer-content">
+        <div class="layer-name">Frontend — 用户界面层</div>
+        <div class="layer-desc">SSR 渲染，Grafana 风格暗色主题，i18n 中英双语</div>
+      </div>
+      <div class="layer-tags">
+        <span class="layer-tag tag-purple">Nuxt 3</span>
+        <span class="layer-tag tag-purple">Vue 3</span>
+        <span class="layer-tag tag-purple">shadcn-vue</span>
+        <span class="layer-tag tag-purple">Tailwind CSS</span>
+        <span class="layer-tag tag-purple">TypeScript</span>
+      </div>
+    </div>
+
+    <div class="platform-layer reveal d4">
+      <div class="layer-icon" style="background: rgba(0,212,255,0.1); color: var(--cyan);">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+      </div>
+      <div class="layer-content">
+        <div class="layer-name">Backend — API 服务层</div>
+        <div class="layer-desc">高性能异步 API，编译时 SQL 校验，流式 SSE 推送</div>
+      </div>
+      <div class="layer-tags">
+        <span class="layer-tag tag-cyan">Rust</span>
+        <span class="layer-tag tag-cyan">Axum</span>
+        <span class="layer-tag tag-cyan">SQLx</span>
+        <span class="layer-tag tag-cyan">Tokio</span>
+      </div>
+    </div>
+
+    <div class="platform-layer reveal d5">
+      <div class="layer-icon" style="background: rgba(255,102,0,0.1); color: var(--orange);">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/></svg>
+      </div>
+      <div class="layer-content">
+        <div class="layer-name">AI Agent — 智能代理层</div>
+        <div class="layer-desc">实时注入基础设施上下文，MCP 工具协议，Skills 扩展系统</div>
+      </div>
+      <div class="layer-tags">
+        <span class="layer-tag tag-orange">Claude CLI</span>
+        <span class="layer-tag tag-orange">MCP</span>
+        <span class="layer-tag tag-orange">Skills</span>
+        <span class="layer-tag tag-orange">SSE Stream</span>
+      </div>
+    </div>
+
+    <div class="platform-layer reveal d6">
+      <div class="layer-icon" style="background: rgba(0,230,118,0.1); color: var(--green);">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>
+      </div>
+      <div class="layer-content">
+        <div class="layer-name">Database — 数据持久层</div>
+        <div class="layer-desc">多租户隔离，编译时查询验证，自动迁移</div>
+      </div>
+      <div class="layer-tags">
+        <span class="layer-tag tag-green">PostgreSQL</span>
+        <span class="layer-tag tag-green">Aurora Serverless</span>
+        <span class="layer-tag tag-green">Redis</span>
+      </div>
+    </div>
+
+    <div class="platform-layer reveal d7">
+      <div class="layer-icon" style="background: rgba(255,171,0,0.1); color: var(--amber);">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="4" width="22" height="16" rx="2"/><path d="M1 10h22"/></svg>
+      </div>
+      <div class="layer-content">
+        <div class="layer-name">Infrastructure — 基础设施层</div>
+        <div class="layer-desc">一键 Terraform 部署，Graviton ARM64 节点，自动弹性伸缩</div>
+      </div>
+      <div class="layer-tags">
+        <span class="layer-tag tag-amber">EKS</span>
+        <span class="layer-tag tag-amber">Karpenter</span>
+        <span class="layer-tag tag-amber">Terraform</span>
+        <span class="layer-tag tag-amber">Helm</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════
+     SLIDE 3: AWS INFRASTRUCTURE
+     ═══════════════════════════════════════════════════════ -->
+<section class="slide slide-compact" id="slide-2">
+  <span class="slide-number mono">03 / 08</span>
+  <div class="section-label reveal">AWS INFRASTRUCTURE</div>
+  <h2 class="reveal d1" style="font-size: clamp(28px, 3.5vw, 44px);">基础设施组件 <span class="cyan">Terraform Modules</span></h2>
+
+  <div class="infra-grid">
+    <div class="infra-card wide reveal d2">
+      <div class="infra-card-icon">&#9729;&#65039;</div>
+      <h3>VPC 网络</h3>
+      <p>多可用区私有网络，公有/私有/数据库子网分层隔离。NAT Gateway 出站，支持 VPC Flow Logs 审计。</p>
+      <div class="detail">iac/modules/vpc &nbsp;|&nbsp; 3 AZ &nbsp;|&nbsp; /16 CIDR</div>
+    </div>
+
+    <div class="infra-card reveal d3">
+      <div class="infra-card-icon">&#9881;&#65039;</div>
+      <h3>EKS + Karpenter</h3>
+      <p>托管 K8s 控制面 + Karpenter 自动弹性。Graviton ARM64 节点，按需扩缩，成本降低 40%。</p>
+      <div class="detail">iac/modules/eks-karpenter &nbsp;|&nbsp; ARM64</div>
+    </div>
+
+    <div class="infra-card reveal d4">
+      <div class="infra-card-icon">&#128451;</div>
+      <h3>Aurora PostgreSQL</h3>
+      <p>Serverless v2 自动扩缩，多可用区高可用，加密存储。编译时 SQLx 查询校验。</p>
+      <div class="detail">iac/modules/rds-aurora-postgresql</div>
+    </div>
+
+    <div class="infra-card reveal d5">
+      <div class="infra-card-icon">&#128737;&#65039;</div>
+      <h3>WAF 防火墙</h3>
+      <p>AWS WAF v2 + 托管规则集。防 SQL 注入、XSS、恶意 Bot，速率限制保护 API 端点。</p>
+      <div class="detail">iac/modules/waf &nbsp;|&nbsp; AWS Managed Rules</div>
+    </div>
+
+    <div class="infra-card reveal d6">
+      <div class="infra-card-icon">&#128272;</div>
+      <h3>Cognito 认证</h3>
+      <p>Azure AD + Cognito 联合登录。User Pool 管理本地账号，支持 OAuth2 SSO 集成。</p>
+      <div class="detail">iac/modules/cognito &nbsp;|&nbsp; OAuth2</div>
+    </div>
+
+    <div class="infra-card reveal d7">
+      <div class="infra-card-icon">&#128274;</div>
+      <h3>Secrets Manager</h3>
+      <p>所有敏感配置（DB 密码、API Key、Token）集中管理，通过 ESO 自动同步到 K8s Secret。</p>
+      <div class="detail">External Secrets Operator</div>
+    </div>
+
+    <div class="infra-card reveal d8">
+      <div class="infra-card-icon">&#127760;</div>
+      <h3>Global Accelerator</h3>
+      <p>全球加速入口，跨区域低延迟访问。Anycast IP 自动路由到最近 Edge Location。</p>
+      <div class="detail">iac/modules/global-accelerator</div>
+    </div>
+
+    <div class="infra-card reveal d9">
+      <div class="infra-card-icon">&#128193;</div>
+      <h3>EFS 文件系统</h3>
+      <p>弹性共享文件存储，跨 AZ 持久化。用于 Skills 文件、Agent 工作区等需要持久化的场景。</p>
+      <div class="detail">iac/modules/efs &nbsp;|&nbsp; Multi-AZ</div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════
+     SLIDE 4: CORE FEATURES (1/2) — AI & Operations
+     ═══════════════════════════════════════════════════════ -->
+<section class="slide" id="slide-3">
+  <span class="slide-number mono">04 / 08</span>
+  <div class="section-label reveal">CORE FEATURES · 1/2</div>
+  <h2 class="reveal d1">核心功能 <span class="accent">— AI & 运维</span></h2>
+
+  <div class="features-grid" style="grid-template-columns: repeat(2, 1fr); max-width: 1100px;">
+    <div class="feature-card highlight reveal d2" style="grid-column: span 2;">
+      <div class="feature-icon" style="background: rgba(255,102,0,0.1); color: var(--orange);">&#129302;</div>
+      <h3>AI Agent <span class="accent">智能代理</span></h3>
+      <p>Claude AI 实时接入全部集群、指标、日志，执行 kubectl / PromQL / LogQL 工具调用</p>
+      <ul class="feature-bullets">
+        <li>动态上下文注入 — 每次会话自动加载账号、集群、可观测性端点</li>
+        <li>MCP 工具协议 — 安全扫描、计费分析、浏览器自动化等可扩展能力</li>
+        <li>Skills 系统 — Git 发现、安装、热重载，支持 User/Tenant/Global 三级作用域</li>
+        <li>流式 SSE 推送 — 实时展示推理过程和工具调用结果</li>
+      </ul>
+    </div>
+
+    <div class="feature-card reveal d3">
+      <div class="feature-icon" style="background: rgba(0,230,118,0.1); color: var(--green);">&#128640;</div>
+      <h3>渐进式部署 <span class="green">Argo Rollouts</span></h3>
+      <p>集成 Argo Rollouts 的完整渐进式交付能力</p>
+      <ul class="feature-bullets">
+        <li>Canary — 分步流量切换，自动化分析</li>
+        <li>Blue-Green — 零停机切换 + 即时回滚</li>
+        <li>可视化拓扑 — Ingress → Service → Rollout 实时状态图</li>
+        <li>一键 Promote / Rollback 操作</li>
+      </ul>
+    </div>
+
+    <div class="feature-card reveal d4">
+      <div class="feature-icon" style="background: rgba(0,212,255,0.1); color: var(--cyan);">&#128200;</div>
+      <h3>多云可观测性 <span class="cyan">Unified Telemetry</span></h3>
+      <p>跨 Provider 统一遥测路由，自动匹配运行时环境</p>
+      <ul class="feature-bullets">
+        <li>自建 LGTM 或 Grafana Cloud 两种模式</li>
+        <li>Grafana / Datadog / Dynatrace 告警 Webhook 接入</li>
+        <li>CloudWatch Anomaly Detection 异常检测</li>
+        <li>AI 自动关联 Metrics + Logs + Traces</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════
+     SLIDE 5: CORE FEATURES (2/2) — Security & Platform
+     ═══════════════════════════════════════════════════════ -->
+<section class="slide" id="slide-4">
+  <span class="slide-number mono">05 / 08</span>
+  <div class="section-label reveal">CORE FEATURES · 2/2</div>
+  <h2 class="reveal d1">核心功能 <span class="accent">— 安全 & 平台</span></h2>
+
+  <div class="features-grid" style="grid-template-columns: repeat(2, 1fr); max-width: 1100px;">
+    <div class="feature-card reveal d2">
+      <div class="feature-icon" style="background: rgba(255,82,82,0.1); color: var(--red);">&#128737;</div>
+      <h3>安全扫描 <span style="color: var(--red);">Security</span></h3>
+      <p>集成 AWS Service Screener，持续安全态势评估</p>
+      <ul class="feature-bullets">
+        <li>多区域、多服务扫描（含中国区）</li>
+        <li>按严重级别和分类（安全/成本/可靠性/性能）展示</li>
+        <li>导出报告 — XLSX, CSV, JSON, PDF</li>
+        <li>AI 辅助修复建议</li>
+      </ul>
+    </div>
+
+    <div class="feature-card reveal d3">
+      <div class="feature-icon" style="background: rgba(255,171,0,0.1); color: var(--amber);">&#128196;</div>
+      <h3>事件生命周期 <span class="amber">Issue & RCA</span></h3>
+      <p>统一告警归集、去重、AI 根因分析</p>
+      <ul class="feature-bullets">
+        <li>Webhook 接入 Grafana / Datadog / Dynatrace</li>
+        <li>指纹去重，智能归集同源告警</li>
+        <li>AI 流式 RCA — 实时查询指标/日志/链路</li>
+        <li>Jira 自动创建工单</li>
+      </ul>
+    </div>
+
+    <div class="feature-card reveal d4" style="grid-column: span 2;">
+      <div class="feature-icon" style="background: rgba(179,136,255,0.1); color: var(--purple);">&#127968;</div>
+      <h3>平台能力 <span class="purple">Multi-Tenancy & Enterprise</span></h3>
+      <p>企业级多租户隔离与精细权限控制，完整的协作与集成体系</p>
+      <ul class="feature-bullets" style="column-count: 2; column-gap: 32px;">
+        <li>RBAC — Super Admin / Tenant Admin / User + 账号级 Read/Write</li>
+        <li>OAuth 登录 — Azure AD + Cognito + 本地密码</li>
+        <li>通知渠道 — Slack / 飞书 / Teams / Jira</li>
+        <li>知识库 + 术语表 — Mermaid 渲染，自动注入 Agent 上下文</li>
+        <li>审批工作流 — 敏感操作需人工确认</li>
+        <li>定时任务 — 周期性执行与历史记录</li>
+        <li>i18n 国际化 — 中英双语支持</li>
+        <li>LLM Provider — Claude 直连 / Bedrock / Gateway 可切换</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════
+     SLIDE 6: DATA FLOW
+     ═══════════════════════════════════════════════════════ -->
+<section class="slide" id="slide-5">
+  <span class="slide-number mono">06 / 08</span>
+  <div class="section-label reveal">DATA FLOW</div>
+  <h2 class="reveal d1">请求链路 <span class="accent">&</span> 数据流</h2>
+
+  <div class="flow-container">
+    <div class="flow-section-title reveal d2">User Request Flow</div>
+    <div class="flow-row reveal d3">
+      <div class="flow-node" style="border-color: rgba(179,136,255,0.2);">
+        <span class="purple">&#127760; Browser</span>
+        <div class="node-sub">HTTPS</div>
+      </div>
+      <div class="flow-arrow"><span class="flow-arrow-label">TLS</span></div>
+      <div class="flow-node" style="border-color: rgba(255,171,0,0.2);">
+        <span class="amber">&#128737; WAF</span>
+        <div class="node-sub">Rate Limit + Rules</div>
+      </div>
+      <div class="flow-arrow"><span class="flow-arrow-label">FILTER</span></div>
+      <div class="flow-node" style="border-color: rgba(0,230,118,0.2);">
+        <span class="green">&#9878; ALB</span>
+        <div class="node-sub">Ingress Controller</div>
+      </div>
+      <div class="flow-arrow"><span class="flow-arrow-label">ROUTE</span></div>
+      <div class="flow-node" style="border-color: rgba(179,136,255,0.2);">
+        <span class="purple">&#127912; Nuxt SSR</span>
+        <div class="node-sub">Frontend Pod</div>
+      </div>
+      <div class="flow-arrow"><span class="flow-arrow-label">API CALL</span></div>
+      <div class="flow-node" style="border-color: rgba(0,212,255,0.2);">
+        <span class="cyan">&#9889; Axum</span>
+        <div class="node-sub">Backend Pod</div>
+      </div>
+    </div>
+
+    <div class="flow-section-title reveal d4" style="margin-top: 28px;">AI Agent Execution</div>
+    <div class="flow-row reveal d5">
+      <div class="flow-node" style="border-color: rgba(0,212,255,0.2);">
+        <span class="cyan">&#9889; Backend</span>
+        <div class="node-sub">Chat Handler</div>
+      </div>
+      <div class="flow-arrow"><span class="flow-arrow-label">SPAWN</span></div>
+      <div class="flow-node" style="border-color: rgba(255,102,0,0.2);">
+        <span class="accent">&#129302; Claude CLI</span>
+        <div class="node-sub">Subprocess</div>
+      </div>
+      <div class="flow-arrow"><span class="flow-arrow-label">MCP</span></div>
+      <div class="flow-node" style="border-color: rgba(255,102,0,0.15);">
+        <span class="accent">&#128296; MCP Tools</span>
+        <div class="node-sub">kubectl / aws / skills</div>
+      </div>
+      <div class="flow-arrow"><span class="flow-arrow-label">SSE</span></div>
+      <div class="flow-node" style="border-color: rgba(179,136,255,0.2);">
+        <span class="purple">&#128172; Stream UI</span>
+        <div class="node-sub">Real-time Output</div>
+      </div>
+    </div>
+
+    <div class="flow-section-title reveal d6" style="margin-top: 28px;">Secrets Distribution</div>
+    <div class="flow-row reveal d7">
+      <div class="flow-node" style="border-color: rgba(255,171,0,0.2);">
+        <span class="amber">&#128274; Secrets Manager</span>
+        <div class="node-sub">AWS SM</div>
+      </div>
+      <div class="flow-arrow"><span class="flow-arrow-label">SYNC</span></div>
+      <div class="flow-node" style="border-color: rgba(0,230,118,0.2);">
+        <span class="green">&#128272; ESO</span>
+        <div class="node-sub">External Secrets Op</div>
+      </div>
+      <div class="flow-arrow"><span class="flow-arrow-label">CREATE</span></div>
+      <div class="flow-node">
+        &#128230; K8s Secret
+        <div class="node-sub">Namespace Scoped</div>
+      </div>
+      <div class="flow-arrow"><span class="flow-arrow-label">MOUNT</span></div>
+      <div class="flow-node" style="border-color: rgba(0,212,255,0.2);">
+        <span class="cyan">&#128230; Pod Env</span>
+        <div class="node-sub">Runtime Injection</div>
+      </div>
+    </div>
+
+    <div class="flow-section-title reveal d8" style="margin-top: 28px;">Observability Pipeline — Self-hosted</div>
+    <div class="flow-row reveal d9">
+      <div class="flow-node">
+        &#128230; Workload Pods
+        <div class="node-sub">Metrics + Logs + Traces</div>
+      </div>
+      <div class="flow-arrow"><span class="flow-arrow-label">SCRAPE</span></div>
+      <div class="flow-node" style="border-color: rgba(255,171,0,0.2);">
+        <span class="amber">&#128301; Alloy</span>
+        <div class="node-sub">Collector Agent</div>
+      </div>
+      <div class="flow-arrow"><span class="flow-arrow-label">PUSH</span></div>
+      <div class="flow-node" style="border-color: rgba(255,102,0,0.15);">
+        <span class="accent">Mimir</span> / <span class="cyan">Loki</span> / <span class="green">Tempo</span>
+        <div class="node-sub">In-cluster LGTM</div>
+      </div>
+      <div class="flow-arrow"><span class="flow-arrow-label">QUERY</span></div>
+      <div class="flow-node" style="border-color: rgba(255,102,0,0.2);">
+        <span class="accent">&#129302; AI Agent</span>
+        <div class="node-sub">PromQL / LogQL</div>
+      </div>
+    </div>
+
+    <div class="flow-section-title" style="margin-top: 20px; opacity: 0.5; font-size: 10px; letter-spacing: 2px;">Observability Pipeline — Grafana Cloud</div>
+    <div class="flow-row reveal d9" style="opacity: 0.85;">
+      <div class="flow-node">
+        &#128230; Workload Pods
+        <div class="node-sub">Metrics + Logs + Traces</div>
+      </div>
+      <div class="flow-arrow"><span class="flow-arrow-label">SCRAPE</span></div>
+      <div class="flow-node" style="border-color: rgba(255,171,0,0.2);">
+        <span class="amber">&#128301; Alloy</span>
+        <div class="node-sub">Collector Agent</div>
+      </div>
+      <div class="flow-arrow"><span class="flow-arrow-label">REMOTE WRITE</span></div>
+      <div class="flow-node" style="border-color: rgba(255,102,0,0.25); background: linear-gradient(135deg, var(--bg-card), rgba(255,102,0,0.04));">
+        <span class="accent">&#9729;&#65039; Grafana Cloud</span>
+        <div class="node-sub">Hosted Mimir / Loki / Tempo</div>
+      </div>
+      <div class="flow-arrow"><span class="flow-arrow-label">QUERY</span></div>
+      <div class="flow-node" style="border-color: rgba(255,102,0,0.2);">
+        <span class="accent">&#129302; AI Agent</span>
+        <div class="node-sub">PromQL / LogQL</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════
+     SLIDE 7: ARCHITECTURE DIAGRAM
+     ═══════════════════════════════════════════════════════ -->
+<section class="slide" id="slide-6">
+  <span class="slide-number mono">07 / 08</span>
+  <div class="section-label reveal">ARCHITECTURE</div>
+  <h2 class="reveal d1">全局架构 <span class="accent">总览</span></h2>
+  <p class="subtitle reveal d2" style="text-align: center;">点击图表可全屏查看</p>
+
+  <div style="width: 100%; max-width: 1100px; margin-top: 24px;">
+    <div class="mermaid-wrap reveal d3" style="max-height: none; min-height: 0; padding: 24px;">
+      <pre class="mermaid">
+graph TB
+  subgraph EDGE["Edge Layer"]
+    GA["Global Accelerator<br/>Anycast IP"]
+    WAF["AWS WAF v2<br/>Rate Limit + Rules"]
+  end
+
+  subgraph EKS["EKS Cluster · Graviton ARM64"]
+    ALB["ALB Ingress Controller"]
+
+    subgraph APP["Application Pods"]
+      FE["Nuxt 3 SSR<br/>Frontend"]
+      subgraph BE_POD["Backend Pod"]
+        BE["Rust / Axum<br/>Backend API"]
+        AGENT["Claude CLI<br/>Subprocess"]
+      end
+    end
+
+    subgraph OBSERVE["LGTM Observability"]
+      ALLOY["Alloy Collector"]
+      MIMIR["Mimir · Metrics"]
+      LOKI["Loki · Logs"]
+      TEMPO["Tempo · Traces"]
+    end
+
+    subgraph DEPLOY["GitOps & Delivery"]
+      ARGO_CD["ArgoCD"]
+      ARGO_RO["Argo Rollouts<br/>Canary / Blue-Green"]
+    end
+
+    subgraph SEC["Secrets & Scaling"]
+      ESO["External Secrets<br/>Operator"]
+      KAR["Karpenter<br/>Auto Scaling"]
+    end
+  end
+
+  subgraph AWS["AWS Managed Services"]
+    AURORA["Aurora PostgreSQL<br/>Serverless v2"]
+    SM["Secrets Manager"]
+    COGNITO["Cognito<br/>OAuth2 SSO"]
+    ECR["ECR Registry"]
+  end
+
+  subgraph MCP_LAYER["AI Tool Chain"]
+    MCP["MCP Servers<br/>kubectl · aws · skills"]
+    SKILLS["Skills System<br/>Hot-reload"]
+  end
+
+  GA --> WAF --> ALB
+  ALB --> FE --> BE
+  BE --> AGENT --> MCP
+  MCP --> SKILLS
+  AGENT --> MIMIR
+  AGENT --> LOKI
+  ALLOY --> MIMIR
+  ALLOY --> LOKI
+  ALLOY --> TEMPO
+  BE --> AURORA
+  ESO --> SM
+  ARGO_CD --> APP
+  ARGO_RO --> APP
+  BE --> COGNITO
+  KAR -.->|"scale nodes"| APP
+
+  classDef edge fill:#1a1520,stroke:#ff6600,stroke-width:1px,color:#e8eaf0
+  classDef eks fill:#0d1117,stroke:#00d4ff,stroke-width:1px,color:#e8eaf0
+  classDef app fill:#141822,stroke:#b388ff,stroke-width:1px,color:#e8eaf0
+  classDef obs fill:#141822,stroke:#00e676,stroke-width:1px,color:#e8eaf0
+  classDef deploy fill:#141822,stroke:#ffab00,stroke-width:1px,color:#e8eaf0
+  classDef sec fill:#141822,stroke:#ff5252,stroke-width:1px,color:#e8eaf0
+  classDef aws fill:#1a1520,stroke:#ffab00,stroke-width:1px,color:#e8eaf0
+  classDef mcp fill:#1a1520,stroke:#ff6600,stroke-width:1px,color:#e8eaf0
+  classDef nodeDefault fill:#181c26,stroke:#3a3f50,stroke-width:1px,color:#c8cad0,font-size:11px
+
+  class GA,WAF edge
+  class ALB eks
+  class FE,BE,AGENT app
+  class ALLOY,MIMIR,LOKI,TEMPO obs
+  class ARGO_CD,ARGO_RO deploy
+  class ESO,KAR sec
+  class AURORA,SM,COGNITO,ECR aws
+  class MCP,SKILLS mcp
+      </pre>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════
+     SLIDE 8: ADVANTAGES
+     ═══════════════════════════════════════════════════════ -->
+<section class="slide" id="slide-7">
+  <span class="slide-number mono">08 / 08</span>
+  <div class="section-label reveal">WHY OPS K</div>
+  <h2 class="reveal d1">项目优势 <span class="accent">六大支柱</span></h2>
+
+  <div class="adv-grid" style="width: 100%; max-width: 1100px; margin-top: 32px; gap: 16px;">
+    <div class="adv-card reveal d2" style="padding: 20px;">
+      <div class="adv-card-header">
+        <div class="adv-icon" style="background: rgba(255,102,0,0.1); color: var(--orange);">&#129302;</div>
+        <h4><span class="accent">AI-Native SRE</span> 智能运维</h4>
+      </div>
+      <p>全量基础设施上下文注入，实时执行 kubectl / PromQL / LogQL 工具调用，流式输出推理过程，告警到根因分析闭环自动化。</p>
+      <div class="adv-tags">
+        <span class="adv-tag">Claude CLI Subprocess</span>
+        <span class="adv-tag">MCP Protocol</span>
+        <span class="adv-tag">SSE Streaming</span>
+        <span class="adv-tag">Skills Hot-reload</span>
+      </div>
+    </div>
+
+    <div class="adv-card reveal d3" style="padding: 20px;">
+      <div class="adv-card-header">
+        <div class="adv-icon" style="background: rgba(255,82,82,0.1); color: var(--red);">&#128737;</div>
+        <h4><span style="color: var(--red);">Zero Trust</span> 纵深防御</h4>
+      </div>
+      <p>WAF 边缘过滤 → ALB TLS 终止 → 多租户 RBAC 隔离 → 账号级读写权限 → Secrets Manager 零明文存储。敏感操作需 Approval Workflow 审批。</p>
+      <div class="adv-tags">
+        <span class="adv-tag">WAF v2</span>
+        <span class="adv-tag">RBAC 3-Tier</span>
+        <span class="adv-tag">ESO → K8s Secrets</span>
+        <span class="adv-tag">Approval Workflow</span>
+      </div>
+    </div>
+
+    <div class="adv-card reveal d4" style="padding: 20px;">
+      <div class="adv-card-header">
+        <div class="adv-icon" style="background: rgba(0,230,118,0.1); color: var(--green);">&#128994;</div>
+        <h4><span class="green">High Availability</span> 高可用架构</h4>
+      </div>
+      <p>Multi-AZ VPC + Aurora 自动故障转移 + EKS 托管控制面 + Karpenter 节点自愈。Argo Rollouts Canary / Blue-Green 渐进式发布，零停机交付。</p>
+      <div class="adv-tags">
+        <span class="adv-tag">Multi-AZ</span>
+        <span class="adv-tag">Auto Failover</span>
+        <span class="adv-tag">Canary Rollout</span>
+        <span class="adv-tag">Blue-Green</span>
+      </div>
+    </div>
+
+    <div class="adv-card reveal d5" style="padding: 20px;">
+      <div class="adv-card-header">
+        <div class="adv-icon" style="background: rgba(0,212,255,0.1); color: var(--cyan);">&#128200;</div>
+        <h4><span class="cyan">Full Observability</span> 全栈可观测</h4>
+      </div>
+      <p>LGTM 栈覆盖 Metrics / Logs / Traces 三大信号。支持自建或 Grafana Cloud 两种模式，AI Agent 按运行时自动路由查询，关联分析无需手动切面板。</p>
+      <div class="adv-tags">
+        <span class="adv-tag">PromQL</span>
+        <span class="adv-tag">LogQL</span>
+        <span class="adv-tag">TraceQL</span>
+        <span class="adv-tag">Grafana Cloud</span>
+      </div>
+    </div>
+
+    <div class="adv-card reveal d6" style="padding: 20px;">
+      <div class="adv-card-header">
+        <div class="adv-icon" style="background: rgba(255,171,0,0.1); color: var(--amber);">&#9889;</div>
+        <h4><span class="amber">Cost Efficient</span> 成本优化</h4>
+      </div>
+      <p>Graviton ARM64 节点成本降低 ~40%，Karpenter 按需伸缩精准匹配负载，Aurora Serverless v2 按用量计费。告别固定容量预留，弹性即省钱。</p>
+      <div class="adv-tags">
+        <span class="adv-tag">Graviton ARM64</span>
+        <span class="adv-tag">Karpenter</span>
+        <span class="adv-tag">Serverless v2</span>
+      </div>
+    </div>
+
+    <div class="adv-card reveal d7" style="padding: 20px;">
+      <div class="adv-card-header">
+        <div class="adv-icon" style="background: rgba(179,136,255,0.1); color: var(--purple);">&#128736;</div>
+        <h4><span class="purple">IaC & GitOps</span> 全自动化交付</h4>
+      </div>
+      <p>Terraform 管理全部基础设施，ArgoCD 声明式部署应用。一条命令从零搭建完整环境，代码即基础设施，Git 即唯一真相源。</p>
+      <div class="adv-tags">
+        <span class="adv-tag">Terraform</span>
+        <span class="adv-tag">ArgoCD</span>
+        <span class="adv-tag">Helm</span>
+        <span class="adv-tag">One-click Deploy</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Fullscreen diagram overlay -->
+<div class="diagram-overlay" id="diagramOverlay">
+  <div class="overlay-inner" id="overlayInner"></div>
+</div>
+<button class="overlay-close" id="overlayClose">ESC &times; Close</button>
+
+<script type="module">
+  import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: 'dark',
+    themeVariables: {
+      darkMode: true,
+      background: '#12151c',
+      primaryColor: '#1e2330',
+      primaryTextColor: '#e8eaf0',
+      primaryBorderColor: '#3a3f50',
+      lineColor: '#5a6378',
+      secondaryColor: '#181c26',
+      tertiaryColor: '#141822',
+      fontFamily: 'Outfit, sans-serif',
+      fontSize: '16px',
+      clusterBkg: '#12151c',
+      clusterBorder: '#3a3f50',
+      edgeLabelBackground: '#12151c',
+      nodeTextColor: '#e8eaf0'
+    },
+    flowchart: {
+      curve: 'basis',
+      padding: 20,
+      nodeSpacing: 30,
+      rankSpacing: 40,
+      htmlLabels: true,
+      useMaxWidth: false
+    }
+  });
+</script>
+
+<script>
+  // ── Intersection Observer for reveal animations
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(e => {
+      if (e.isIntersecting) e.target.classList.add('visible');
+    });
+  }, { threshold: 0.15 });
+
+  document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
+
+  // ── Navigation dots
+  const slides = document.querySelectorAll('.slide');
+  const dots = document.querySelectorAll('.nav-dot');
+
+  dots.forEach(dot => {
+    dot.addEventListener('click', () => {
+      slides[dot.dataset.slide].scrollIntoView({ behavior: 'smooth' });
+    });
+  });
+
+  const slideObserver = new IntersectionObserver((entries) => {
+    entries.forEach(e => {
+      if (e.isIntersecting) {
+        const idx = [...slides].indexOf(e.target);
+        dots.forEach((d, i) => d.classList.toggle('active', i === idx));
+      }
+    });
+  }, { threshold: 0.5 });
+
+  slides.forEach(s => slideObserver.observe(s));
+
+  // ── Progress bar
+  window.addEventListener('scroll', () => {
+    const h = document.documentElement;
+    const pct = (h.scrollTop / (h.scrollHeight - h.clientHeight)) * 100;
+    document.getElementById('progress').style.width = pct + '%';
+  });
+
+  // ── Keyboard navigation
+  document.addEventListener('keydown', (e) => {
+    // Close overlay on Escape
+    if (e.key === 'Escape') {
+      closeDiagramOverlay();
+      return;
+    }
+    const current = [...dots].findIndex(d => d.classList.contains('active'));
+    if (e.key === 'ArrowDown' || e.key === 'ArrowRight' || e.key === ' ') {
+      e.preventDefault();
+      if (current < slides.length - 1) slides[current + 1].scrollIntoView({ behavior: 'smooth' });
+    }
+    if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') {
+      e.preventDefault();
+      if (current > 0) slides[current - 1].scrollIntoView({ behavior: 'smooth' });
+    }
+  });
+
+  // ── Diagram zoom overlay
+  const overlay = document.getElementById('diagramOverlay');
+  const overlayInner = document.getElementById('overlayInner');
+  const overlayClose = document.getElementById('overlayClose');
+
+  function openDiagramOverlay() {
+    const mermaidSvg = document.querySelector('.mermaid-wrap svg');
+    if (!mermaidSvg) return;
+    overlayInner.innerHTML = mermaidSvg.outerHTML;
+    const cloned = overlayInner.querySelector('svg');
+    if (cloned) {
+      // Remove constraining styles, render at native size scaled up
+      cloned.removeAttribute('width');
+      cloned.style.width = 'auto';
+      cloned.style.height = 'auto';
+      cloned.style.minWidth = '1400px';
+      cloned.style.maxWidth = 'none';
+      // Scale up the viewBox for crispness
+      const vb = cloned.getAttribute('viewBox');
+      if (vb) {
+        const parts = vb.split(' ').map(Number);
+        cloned.setAttribute('viewBox', parts.join(' '));
+      }
+    }
+    overlay.style.display = 'flex';
+    overlayClose.style.display = 'block';
+    requestAnimationFrame(() => overlay.classList.add('open'));
+  }
+
+  function closeDiagramOverlay() {
+    overlay.classList.remove('open');
+    overlayClose.style.display = 'none';
+    setTimeout(() => { overlay.style.display = 'none'; overlayInner.innerHTML = ''; }, 300);
+  }
+
+  // Click the mermaid card to zoom
+  document.querySelector('.mermaid-wrap')?.addEventListener('click', openDiagramOverlay);
+  // Click overlay background or close button to dismiss
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) closeDiagramOverlay(); });
+  overlayClose.addEventListener('click', closeDiagramOverlay);
+</script>
+
+</body>
+</html>
