@@ -4,7 +4,7 @@ Multi-cloud infrastructure operations platform with AI-powered Root Cause Analys
 
 ## Demo
 
-<video src="assets/opsk-demo.mp4" controls width="100%"></video>
+https://github.com/koljahuang/opsk-gx/raw/main/assets/opsk-demo.mp4
 
 ## Tech Stack
 
