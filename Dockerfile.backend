@@ -1,0 +1,110 @@
+# Ops Backend - Multi-stage build
+# Supports linux/amd64 and linux/arm64 (Graviton)
+# Requires: DOCKER_BUILDKIT=1
+
+# Stage 1a: Install cargo-chef
+FROM public.ecr.aws/docker/library/rust:1.94.1-slim-bookworm AS chef
+RUN apt-get update && apt-get install -y pkg-config libssl-dev && rm -rf /var/lib/apt/lists/*
+RUN cargo install cargo-chef --locked
+WORKDIR /app
+
+# Stage 1b: Analyze dependencies (produces recipe.json)
+FROM chef AS planner
+COPY backend/ .
+RUN cargo chef prepare --recipe-path recipe.json
+
+# Stage 1c: Build dependencies (cached as Docker layer — only rebuilds when Cargo.toml/lock change)
+FROM chef AS builder
+COPY --from=planner /app/recipe.json recipe.json
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=/usr/local/cargo/git \
+    cargo chef cook --release --recipe-path recipe.json
+
+# Build actual binary (only recompiles app code, deps are cached above)
+COPY backend/ .
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=/usr/local/cargo/git \
+    cargo build --release \
+    && cp target/release/opsk /app/opsk
+
+# Stage 2: Prepare screener
+FROM public.ecr.aws/docker/library/debian:bookworm-slim AS screener
+
+RUN apt-get update && apt-get install -y --no-install-recommends git ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY .opsk/screener* /tmp/screener-check/
+RUN if [ -d /tmp/screener-check/global ] && [ -f /tmp/screener-check/global/main.py ]; then \
+        echo "Using existing .opsk/screener from build context" && \
+        mkdir -p /opt/screener && \
+        cp -r /tmp/screener-check/* /opt/screener/; \
+    else \
+        echo "Cloning screener repos..." && \
+        mkdir -p /opt/screener && \
+        git clone --depth 1 https://github.com/aws-samples/service-screener-v2.git /opt/screener/global && \
+        git clone --depth 1 https://github.com/lijh-aws-tools/service-screener-cn.git /opt/screener/china; \
+    fi && rm -rf /tmp/screener-check
+
+# Stage 3: Runtime image
+FROM public.ecr.aws/docker/library/debian:bookworm-slim
+
+ARG TARGETARCH
+ARG CN_MIRROR=0
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates curl unzip jq git python3 python3-pip python3-venv \
+    && rm -rf /var/lib/apt/lists/*
+
+# AWS CLI v2 — use pre-downloaded zip for arm64, download for amd64
+COPY awscli-aarch64.zip /tmp/awscli-aarch64.zip
+RUN case "${TARGETARCH}" in \
+      arm64) cp /tmp/awscli-aarch64.zip /tmp/awscliv2.zip ;; \
+      *)     curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o /tmp/awscliv2.zip ;; \
+    esac && \
+    unzip -q /tmp/awscliv2.zip -d /tmp && /tmp/aws/install && rm -rf /tmp/aws /tmp/awscliv2.zip /tmp/awscli-aarch64.zip
+
+# Node.js 24 LTS + Claude Code CLI
+RUN case "${TARGETARCH}" in \
+      arm64) NODE_ARCH="arm64" ;; \
+      *)     NODE_ARCH="x64"   ;; \
+    esac && \
+    curl -fsSL --retry 3 --retry-delay 5 -o /tmp/node.tar.gz \
+      "https://nodejs.org/dist/v24.14.1/node-v24.14.1-linux-${NODE_ARCH}.tar.gz" \
+    && tar -xzf /tmp/node.tar.gz --strip-components=1 -C /usr/local \
+    && rm /tmp/node.tar.gz \
+    && npm install -g @anthropic-ai/claude-code \
+    && claude --version
+
+# uv (Python package manager) — install to /usr/local so non-root can use
+RUN curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR=/usr/local/bin sh
+
+# Python packages commonly needed by skills (boto3, pandas, etc.)
+# Placed late so changes here don't invalidate apt/awscli/node cached layers above
+RUN pip3 install --no-cache-dir --break-system-packages \
+    -i https://mirrors.aliyun.com/pypi/simple/ --trusted-host mirrors.aliyun.com \
+    boto3 openpyxl pyarrow pandas
+
+# Copy screener & install Python deps (remove any local venvs first, then recreate)
+COPY --from=screener /opt/screener /app/.opsk/screener
+RUN cd /app/.opsk/screener/global && rm -rf .venv && uv venv \
+    && uv pip install --python .venv/bin/python -r requirements.txt || true \
+    && cd /app/.opsk/screener/china && rm -rf .venv && uv venv \
+    && uv pip install --python .venv/bin/python -r requirements.txt || true
+
+# Copy binary (from explicit path, not from cache mount)
+COPY --from=builder /app/opsk /usr/local/bin/opsk
+
+# Non-root user
+RUN groupadd -r ops && useradd -r -g ops -s /sbin/nologin -d /app ops \
+    && mkdir -p /app/workspace && chown -R ops:ops /app
+
+USER ops
+WORKDIR /app
+
+EXPOSE 3080
+ENV RUST_LOG=opsk=info,tower_http=info
+
+HEALTHCHECK --interval=15s --timeout=3s --start-period=10s --retries=3 \
+    CMD curl -sf http://localhost:3080/health || exit 1
+
+CMD ["opsk"]

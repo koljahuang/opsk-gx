@@ -1,0 +1,83 @@
+# Dependencies
+node_modules/
+frontend/node_modules/
+frontend/.nuxt/
+frontend/.output/
+frontend/dist/
+
+# Rust
+backend/target/
+backend/*.rs.bk
+
+# Python venv
+.venv/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Terraform
+**/.terraform/
+**/*.tfstate
+**/*.tfstate.*
+**/*.tfplan
+**/.terraform.lock.hcl
+iac/providers.tf
+
+# Docker
+docker-compose.override.yml
+
+# Logs
+*.log
+logs/
+
+# Test
+coverage/
+test-results/
+
+# Build
+dist/
+build/
+
+# Workspace (runtime user data)
+workspace/
+
+# Service Screener (cloned locally)
+.opsk/
+
+# Temporary analysis/reference docs
+tmp/
+
+# Generated k8s manifests (from .yaml.template, contain env-specific values)
+k8s/application/ingress-api.yaml
+k8s/application/ingress-frontend.yaml
+k8s/application/backend-deployment.yaml
+k8s/application/frontend-deployment.yaml
+k8s/application/backend-configmap.yaml
+k8s/application/frontend-configmap.yaml
+k8s/application/hpa-backend.yaml
+k8s/application/hpa-frontend.yaml
+k8s/application/secret-store.yaml
+k8s/application/external-secret.yaml
+k8s/application/storageclass-encrypted.yaml
+
+# Claude Code
+.claude/
+
+# Secrets detection
+.secrets.baseline
+
+# Large assets / archives
+*.zip
